@@ -60,7 +60,7 @@
       </div>
       <details class="method"><summary>How the comparison works</summary><p>Across sites matches a local <code>ldn</code>, then other local primary keys or <code>moId</code>. With normalization enabled, the suffix equal to ManagedElement in an ENB/GNB CUCP, CUUP or DU function root becomes <code>{site}</code>. Cell IDs, neighbor IDs and the rest of the path remain exact. This assumes equal local IDs represent comparable objects; hardware and neighbor IDs may have different meanings across sites. ManagedElement is treated as the site-level singleton. Same-site mode uses the complete primary key from row 5. No usable key and duplicate keys are reported without guessing.</p><p>Values are compared exactly, including letter case, spaces and stored cell types. <code>(blank)</code> is an existing empty value. Missing objects and sheets have explicit labels. Differences indicate variation; they do not establish that a configuration is wrong.</p><p>All configuration sheets are merged even when only a subset is audited. Empty sheets are preserved. Repeated source records are retained. Incompatible headers or unsupported data features block the merge with a specific reason.</p></details>
     </section>
-    <footer>ZTE ITBBU configuration tools<span>No account. No file uploads to a server.</span></footer>
+    <footer><strong class="app-attribution">Powered by Muhammad Naveed Arshad</strong><span>No account. No file uploads to a server.</span></footer>
   </main>
   <div id="toast" class="toast" role="status" hidden></div>
 </body>
