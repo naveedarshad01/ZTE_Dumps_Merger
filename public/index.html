@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Merge ZTE ITBBU configuration workbooks without changing the template. Compare parameter values across sites or snapshots, entirely in your browser.">
+  <meta name="theme-color" content="#102236"><title>ITBBU Config Studio</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <aside class="rail">
+    <a class="brand" href="./" aria-label="ITBBU Config Studio home"><span class="brand-mark">▦</span><span>ITBBU<span class="brand-sub">CONFIG STUDIO</span></span></a>
+    <div class="rail-caption">WORKSPACE</div>
+    <nav aria-label="Workflow">
+      <a href="#sources" class="nav-item active"><span>01</span> Source workbooks</a>
+      <a href="#settings" class="nav-item"><span>02</span> Merge &amp; audit</a>
+      <a href="#results" class="nav-item"><span>03</span> Results &amp; export</a>
+    </nav>
+    <div class="rail-bottom"><div class="local-icon">⌘</div><strong>Your configuration stays here.</strong><p>Files are processed on your device and cleared when you close this page.</p><span class="version">ZTE ITBBU · XLSX</span></div>
+  </aside>
+  <main>
+    <header class="topbar"><span>NETWORK OPERATIONS <span class="slash">/</span> CONFIGURATION</span><span class="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 10V7a6 6 0 0 1 12 0v3M5 10h14v11H5zM12 14v3"/></svg>Local processing</span></header>
+    <section class="page-title"><div><p class="eyebrow">MERGE + COMPARE</p><h1>Configuration workspace</h1><p>One intact template. Every site’s parameters, side by side.</p></div><span class="template-chip">Data starts at row <strong>06</strong></span></section>
+
+    <section class="source-grid" id="sources">
+      <div class="panel upload-panel">
+        <div class="section-heading"><div><span class="step">01</span><h2>Source workbooks</h2></div><button id="clear" class="text-button" hidden>Clear all</button></div>
+        <label class="dropzone" id="dropzone" for="files">
+          <svg class="upload-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 30V8m-8 8 8-8 8 8M10 28v10a3 3 0 0 0 3 3h22a3 3 0 0 0 3-3V28"/></svg>
+          <strong>Drop your Excel workbooks here</strong><span>or <b>browse files</b> to select them</span><small>2–20 .xlsx files · 150 MiB total</small>
+          <input id="files" type="file" accept=".xlsx" multiple>
+        </label>
+        <div id="file-list" class="file-list" aria-live="polite"></div>
+        <div class="source-footer"><span id="file-count">No files selected</span><button class="button primary" id="inspect" disabled>Inspect workbooks <span aria-hidden="true">↗</span></button></div>
+      </div>
+      <div class="panel template-panel">
+        <p class="eyebrow">TEMPLATE PRESERVATION</p><h2>Five rows stay in place.</h2><p>Append each sheet’s records from row 6, in file order. Keep the original names, colours, column widths and dropdowns.</p>
+        <div class="template-preview" aria-label="Template rows 1–5 are preserved, followed by File-1 and File-2 data"><div><i>1</i><span class="violet">Parameter names</span></div><div><i>2</i><span class="yellow">Descriptions</span></div><div><i>3</i><span class="teal">Data types</span></div><div><i>4</i><span class="cyan">Parameter guidance</span></div><div><i>5</i><span class="pale">Primary keys &amp; rules</span></div><div class="data-demo"><i>6+</i><span>File-1 data</span><em>+</em><span>File-2…N data</span></div></div>
+        <p class="small-note">TemplateInfo, Index and supporting lookup sheets remain unchanged from File-1.</p>
+      </div>
+    </section>
+
+    <div id="notice" class="notice" role="alert" hidden></div>
+    <div id="progress-panel" class="progress-panel" hidden><div><strong id="progress-label">Reading workbooks…</strong><button class="text-button" id="cancel">Cancel</button></div><progress id="progress" max="1"></progress><span>This may take a moment for large ZTE templates.</span></div>
+
+    <section id="settings" class="panel settings-panel" hidden>
+      <div class="section-heading"><div><span class="step">02</span><h2>Merge &amp; audit</h2></div><span class="subtle">Merge keeps every source record</span></div>
+      <div class="settings-grid"><div><label class="field-label" for="match-mode">Compare objects by</label><select id="match-mode"><option value="local">Across sites · local LDN / MO key</option><option value="strict">Same site snapshots · full primary key</option></select><p class="field-help" id="mode-help">Match the same local object identifier across sites. Duplicate keys are flagged for review.</p><label class="checkbox-line"><input type="checkbox" id="normalize-roots" checked> Normalize site IDs in ENB / GNB function roots</label></div><div class="audit-scope"><label class="field-label" for="scope">Sheets to audit</label><select id="scope"><option value="all">All configuration sheets</option><option value="selected">Choose specific sheets</option></select><label class="checkbox-line"><input type="checkbox" id="include-identity"> Include identity parameters</label><p class="field-help">By default, site IDs, names, MODIND, LDN and moId are excluded as comparison parameters.</p></div></div>
+      <div id="sheet-picker" hidden><div class="picker-toolbar"><input type="search" id="sheet-search" placeholder="Find a sheet…" aria-label="Find sheets to audit"><button id="select-all" class="text-button">Select visible</button><button id="select-none" class="text-button">Clear selection</button><span id="selected-count"></span></div><div id="sheet-choices" class="sheet-choices"></div></div>
+      <div class="settings-footer"><p>No row-position matching. Blank cells, missing objects and duplicate keys are distinct.</p><button id="run" class="button primary">Run parameter audit <span aria-hidden="true">→</span></button></div>
+    </section>
+
+    <section id="results" hidden>
+      <div class="results-heading"><div><p class="eyebrow">YOUR RESULTS</p><h2>Ready for review</h2></div><div class="export-actions"><button id="download-merge" class="button secondary">↓ Merged workbook</button><button id="download-audit" class="button primary" disabled>↓ Audit workbook</button></div></div>
+      <div class="stats"><div><span>CONFIGURATION SHEETS</span><strong id="stat-sheets">—</strong><small>Original sheet structure</small></div><div><span>MERGED RECORDS</span><strong id="stat-records">—</strong><small>Every source row retained</small></div><div><span>PARAMETER DIFFERENCES</span><strong id="stat-differences">—</strong><small>Objects present in every file</small></div><div><span>MISSING / AMBIGUOUS</span><strong id="stat-missing">—</strong><small>Comparisons needing review</small></div></div>
+      <div class="panel results-panel">
+        <div class="tabbar" role="tablist" aria-label="Results view"><button role="tab" id="coverage-tab" aria-controls="coverage-view" aria-selected="true">Sheet coverage</button><button role="tab" id="audit-tab" aria-controls="audit-view" aria-selected="false" disabled>Parameter audit</button><span id="result-caption">All configuration sheets</span></div>
+        <div id="coverage-view" role="tabpanel" aria-labelledby="coverage-tab"><div class="table-tools"><input type="search" id="coverage-search" placeholder="Search configuration sheets…" aria-label="Search sheet coverage"><label class="checkbox-line"><input type="checkbox" id="populated-only" checked> With data only</label></div><div class="table-wrap"><table id="coverage-table"><thead></thead><tbody></tbody></table></div><div class="pagination"><span id="coverage-count"></span><div><button class="button small" id="coverage-prev">Previous</button><button class="button small" id="coverage-next">Next</button></div></div></div>
+        <div id="audit-view" role="tabpanel" aria-labelledby="audit-tab" hidden><div class="table-tools audit-tools"><input type="search" id="audit-search" placeholder="Search parameters, objects or values…" aria-label="Search parameter audit"><select id="audit-sheet" aria-label="Audit sheet"><option value="">All audited sheets</option></select><select id="audit-status" aria-label="Audit status"><option value="issues">Differences &amp; issues</option><option value="all">All comparisons</option><option>Different</option><option>Same</option><option>Missing object</option><option>Missing sheet</option><option>Missing parameter</option><option>Ambiguous key</option><option>No key</option></select></div><div class="audit-export-note"><label class="checkbox-line"><input type="checkbox" id="export-issues"> Export differences &amp; issues only</label><span>Search filters affect the preview. Export includes all selected audit sheets.</span></div><div class="table-wrap audit-wrap"><table id="audit-table"><thead></thead><tbody></tbody></table></div><div class="pagination"><span id="audit-count"></span><div><button class="button small" id="audit-prev">Previous</button><button class="button small" id="audit-next">Next</button></div></div></div>
+      </div>
+      <details class="method"><summary>How the comparison works</summary><p>Across sites matches a local <code>ldn</code>, then other local primary keys or <code>moId</code>. With normalization enabled, the suffix equal to ManagedElement in an ENB/GNB CUCP, CUUP or DU function root becomes <code>{site}</code>. Cell IDs, neighbor IDs and the rest of the path remain exact. This assumes equal local IDs represent comparable objects; hardware and neighbor IDs may have different meanings across sites. ManagedElement is treated as the site-level singleton. Same-site mode uses the complete primary key from row 5. No usable key and duplicate keys are reported without guessing.</p><p>Values are compared exactly, including letter case, spaces and stored cell types. <code>(blank)</code> is an existing empty value. Missing objects and sheets have explicit labels. Differences indicate variation; they do not establish that a configuration is wrong.</p><p>All configuration sheets are merged even when only a subset is audited. Empty sheets are preserved. Repeated source records are retained. Incompatible headers or unsupported data features block the merge with a specific reason.</p></details>
+    </section>
+    <footer>ZTE ITBBU configuration tools<span>No account. No file uploads to a server.</span></footer>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

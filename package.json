@@ -1,0 +1,10 @@
+{
+  "name": "itbbu-config-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-local ZTE ITBBU configuration merger and parameter audit",
+  "scripts": {
+    "check": "node --check public/app.js && node --check public/engine.js && node --check public/worker.js",
+    "test": "node --test tests/engine.test.cjs"
+  }
+}
