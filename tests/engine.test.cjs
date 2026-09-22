@@ -29,6 +29,11 @@ async function fixture(name, sheets, opts = {}) {
    z.file(`xl/worksheets/sheet${i+1}.xml`,xml);
  });
  if(opts.shared) z.file('xl/sharedStrings.xml',`<sst xmlns="${NS}">${(opts.strings || ['shared value']).map(s=>'<si><t>'+E._internals.xml(s)+'</t></si>').join('')}</sst>`);
+ if(opts.theme) {
+   z.file('xl/theme/theme1.xml',opts.theme);
+   z.file('[Content_Types].xml',(await z.file('[Content_Types].xml').async('string')).replace('</Types>','<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/></Types>'));
+   z.file('xl/_rels/workbook.xml.rels',(await z.file('xl/_rels/workbook.xml.rels').async('string')).replace('</Relationships>',`<Relationship Id="rIdTheme" Target="theme/theme1.xml" Type="${R}/theme"/></Relationships>`));
+ }
  return {name:name+'.xlsx',bytes:await z.generateAsync({type:'uint8array',compression:'DEFLATE'})};
 }
 const inspect = async files => E.inspect(files,Zip);
@@ -278,5 +283,97 @@ test('references with dynamic or external dropdown dependencies stop before a br
  ]) {
    const b=await fixture('B',{MO:[row('2','Object=1','1')]},opts), s=await inspect([a,b]);
    assert.ok(s.issues.some(i=>/dynamic or external/.test(i.message)));await assert.rejects(()=>E.merge(s),/compatibility/);
+ }
+});
+
+const themeXml = (minor, major, accent) => '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Test"><a:themeElements><a:clrScheme name="Test"><a:dk1><a:sysClr val="windowText" lastClr="123456"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FAFAFA"/></a:lt1><a:dk2><a:srgbClr val="222222"/></a:dk2><a:lt2><a:srgbClr val="EEEEEE"/></a:lt2>'+Array.from({length:6},(_,i)=>'<a:accent'+(i+1)+'><a:srgbClr val="'+accent+'"/></a:accent'+(i+1)+'>').join('')+'<a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme><a:fontScheme name="Test"><a:majorFont><a:latin typeface="'+major+'"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="'+minor+'"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme><a:fmtScheme name="Test"/></a:themeElements></a:theme>';
+const themedStyles = importedStyles
+ .replace('<name val="Courier New"/>','<name val="Calibri"/><scheme val="minor"/>')
+ .replace('<name val="Calibri"/><b/><color rgb="FF123456"/>','<name val="Cambria"/><scheme val="major"/><b/><color theme="1"/>')
+ .replace('fgColor rgb="FFB788E0"','fgColor theme="4" tint="0.4"')
+ .replace('color rgb="FF445566"','color theme="5"')
+ .replace('fgColor rgb="FFFF0000"','fgColor theme="6"');
+function styleParts(raw, collection, tag) {
+ const body=raw.match(new RegExp('<'+collection+'\\b[^>]*>[\\s\\S]*?</'+collection+'>'))?.[0] || '';
+ return [...body.matchAll(new RegExp('<'+tag+'\\b[^>]*?(?:/>|>[\\s\\S]*?</'+tag+'>)','g'))].map(m=>m[0]);
+}
+function cellAppearance(styles, raw, ref) {
+ const a=E._internals.attrs(raw.match(new RegExp('<c r="'+ref+'"[^>]*>'))[0]);
+ const xf=E._internals.attrs(styleParts(styles,'cellXfs','xf')[a.s || 0]);
+ return {font:styleParts(styles,'fonts','font')[xf.fontId],fill:styleParts(styles,'fills','fill')[xf.fillId],border:styleParts(styles,'borders','border')[xf.borderId]};
+}
+
+test('theme-less wider references merge into modern-theme workbooks in either upload order',async()=>{
+ const modern=themeXml('Aptos Narrow','Aptos Display','AABBCC');
+ const legacyStyles=importedStyles.replace('<name val="Courier New"/>','<name val="Calibri"/><scheme val="minor"/>');
+ const a=await fixture('modern',{MO:[row('1','Object=1','')]},{order:[0,1,2,3,4,5,6],theme:modern});
+ const b=await fixture('legacy',{MO:[row('2','Object=1','legacy value')]},{styles:legacyStyles,mutateXml:raw=>raw.replace(/ s="0"/g,'')});
+ for(const files of [[a,b],[b,a]]) {
+   const s=await inspect(files);assert.equal(s.issues.length,0);assert.equal(s.sheets[0].columns,8);
+   const z=await Zip.loadAsync(await E.merge(s)), raw=await z.file('xl/worksheets/sheet1.xml').async('string'), styles=await z.file('xl/styles.xml').async('string');
+   assert.deepEqual(dataRows(raw).map(c=>c[7].text),files[0]===a ? ['','legacy value'] : ['legacy value','']);
+   assert.match(cellAppearance(styles,raw,'H7').font,/name val="Calibri"/);
+   if(files[0]===a) {assert.equal(await z.file('xl/theme/theme1.xml').async('string'),modern);assert.doesNotMatch(cellAppearance(styles,raw,'H7').font,/<scheme/);assert.match(cellAppearance(styles,raw,'H3').font,/name val="Calibri"/);}
+   else assert.equal(z.file('xl/theme/theme1.xml'),null);
+ }
+});
+
+test('identical style XML with different themes imports each reference font, RGB, tint and conditional colour',async()=>{
+ const a=await fixture('base',{Base:[row('0','Base=1','0')],MO:[row('1','Object=1','')],Other:[row('1','Other=1','')]},{styles:themedStyles,theme:themeXml('Aptos','Aptos Display','AAAAAA'),order:{MO:[0,1,2,3,4,5,6],Other:[0,1,2,3,4,5,6]}});
+ const conditional='<conditionalFormatting sqref="H6:H6"><cfRule type="cellIs" dxfId="0" priority="1" operator="greaterThan"><formula>0</formula></cfRule></conditionalFormatting>';
+ const b=await fixture('second',{MO:[row('2','Object=1','2')]},{styles:themedStyles,theme:themeXml('Calibri','Cambria','4477AA'),mutateXml:raw=>raw.replace(/(<worksheet\b[^>]*>)/,'$1<sheetPr><tabColor theme="4"/></sheetPr>').replace('</worksheet>',conditional+'</worksheet>')});
+ const c=await fixture('third',{Other:[row('3','Other=1','3')]},{styles:themedStyles,theme:themeXml('Arial','Georgia','BB6633')});
+ const s=await inspect([a,b,c]);assert.equal(s.issues.length,0);
+ const z=await Zip.loadAsync(await E.merge(s)), styles=await z.file('xl/styles.xml').async('string');
+ for(const [path,minor,major,colour] of [['sheet2.xml','Calibri','Cambria','4477AA'],['sheet3.xml','Arial','Georgia','BB6633']]) {
+   const raw=await z.file('xl/worksheets/'+path).async('string'), h=cellAppearance(styles,raw,'H1'), d=cellAppearance(styles,raw,'H7');
+   assert.match(h.font,new RegExp('name val="'+major+'"'));assert.doesNotMatch(h.font,/<scheme/);assert.match(h.font,/rgb="FF123456"/);
+   assert.match(d.font,new RegExp('name val="'+minor+'"'));assert.doesNotMatch(d.font,/<scheme/);
+   assert.match(h.fill,new RegExp('rgb="FF'+colour+'"'));assert.match(h.fill,/tint="0.4"/);assert.doesNotMatch(h.fill,/theme=/);
+   assert.match(h.border,new RegExp('rgb="FF'+colour+'"'));
+   if(path==='sheet2.xml') {const id=E._internals.attrs(raw.match(/<cfRule\b[^>]*>/)[0]).dxfId;assert.match(styleParts(styles,'dxfs','dxf')[id],/rgb="FF4477AA"/);assert.match(raw,/<tabColor rgb="FF4477AA"\/>/);}
+ }
+ const original=await Zip.loadAsync(a.bytes);assert.equal(await z.file('xl/theme/theme1.xml').async('string'),await original.file('xl/theme/theme1.xml').async('string'));
+ assert.deepEqual(styleParts(styles,'fonts','font').slice(0,2),styleParts(themedStyles,'fonts','font'));
+});
+
+test('different indexed palettes preserve imported fill colours and the base palette',async()=>{
+ const palette=colour=>'<colors><indexedColors>'+Array.from({length:9},(_,i)=>'<rgbColor rgb="FF'+(i===8 ? colour : '000000')+'"/>').join('')+'</indexedColors></colors>';
+ const sourceStyles=importedStyles.replace('fgColor rgb="FFB788E0"','fgColor indexed="8"').replace('</styleSheet>',palette('ABCDEF')+'</styleSheet>');
+ const baseStyles=importedStyles.replace('</styleSheet>',palette('102030')+'</styleSheet>');
+ const a=await fixture('base',{MO:[row('1','Object=1','')]},{order:[0,1,2,3,4,5,6],styles:baseStyles});
+ const b=await fixture('donor',{MO:[row('2','Object=1','2')]},{styles:sourceStyles});
+ const s=await inspect([a,b]);assert.equal(s.issues.length,0);
+ const z=await Zip.loadAsync(await E.merge(s)),raw=await z.file('xl/worksheets/sheet1.xml').async('string'),styles=await z.file('xl/styles.xml').async('string');
+ assert.match(cellAppearance(styles,raw,'H1').fill,/fgColor rgb="FFABCDEF"/);assert.match(styles,new RegExp(palette('102030')));
+});
+
+test('shared and inline rich text retain source theme fonts and colours when columns are remapped',async()=>{
+ const a=await fixture('base',{MO:[row('1','Object=1','base')]},{theme:themeXml('Aptos','Aptos Display','AAAAAA')});
+ const b=await fixture('rich',{MO:[row('2','Object=1','shared value')]},{theme:themeXml('Arial','Georgia','BB6633'),shared:true,order:[0,7,6,5,4,3,2,1]});
+ const z=await Zip.loadAsync(b.bytes);
+ const rich='<r><rPr><rFont val="Calibri"/><scheme val="minor"/><color theme="4" tint="-0.25"/></rPr><t>shared value</t></r>';
+ z.file('xl/sharedStrings.xml','<sst xmlns="'+NS+'"><si>'+rich+'</si></sst>');b.bytes=await z.generateAsync({type:'uint8array'});
+ const c=await fixture('inline',{MO:[row('3','Object=1','shared value')]},{theme:themeXml('Arial','Georgia','BB6633'),mutateXml:raw=>raw.replace('<t xml:space="preserve">shared value</t>',rich)});
+ const s=await inspect([a,b,c]);assert.equal(s.issues.length,0);
+ const merged=await Zip.loadAsync(await E.merge(s)),raw=await merged.file('xl/worksheets/sheet1.xml').async('string');
+ for(const ref of ['H7','H8']) {
+   const cell=raw.match(new RegExp('<c r="'+ref+'"[^>]*>[\\s\\S]*?</c>'))[0];
+   assert.match(cell,/rFont val="Arial"/);assert.match(cell,/rgb="FFBB6633"/);assert.match(cell,/tint="-0.25"/);assert.doesNotMatch(cell,/scheme|theme=/);
+ }
+ assert.deepEqual(dataRows(raw).map(c=>c[7].text),['base','shared value','shared value']);
+});
+
+test('newer Excel row extension namespaces survive transfer into older reference sheets',async()=>{
+ const uri='http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac';
+ const mc='http://schemas.openxmlformats.org/markup-compatibility/2006';
+ const a=await fixture('modern',{MO:[row('1','Object=1','')]},{order:[0,1,2,3,4,5,6],mutateXml:raw=>raw.replace('<worksheet ','<worksheet xmlns:x14ac="'+uri+'" xmlns:mc="'+mc+'" mc:Ignorable="x14ac" ').replace('<row r="6"','<row x14ac:dyDescent="0.3" r="6"')});
+ const b=await fixture('legacy',{MO:[row('2','Object=1','2')]},{mutateXml:raw=>raw.replace('<worksheet ','<worksheet xmlns:x14ac="urn:different-local-binding" ')});
+ for(const files of [[a,b],[b,a]]) {
+   const s=await inspect(files);assert.equal(s.issues.length,0);
+   const z=await Zip.loadAsync(await E.merge(s)),raw=await z.file('xl/worksheets/sheet1.xml').async('string');
+   const copied=raw.match(/<row\b[^>]*x14ac:dyDescent="0.3"[^>]*>/)[0], attributes=E._internals.attrs(copied);
+   assert.equal(attributes['xmlns:x14ac'],uri);assert.equal(attributes['xmlns:mc'],mc);assert.equal(attributes['mc:Ignorable'],'x14ac');
+   assert.deepEqual(dataRows(raw).map(c=>c[3].text),files[0]===a ? ['1','2'] : ['2','1']);
  }
 });

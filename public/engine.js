@@ -205,8 +205,11 @@
         warnings.push(name + ': ' + action);
         templateDetails.push({ severity: 'Notice', sheet: name, file: donorBook.label, template: donorBook.label, action });
         if (donor.externalTemplateParts) { compatible = false; issues.push({ sheet: name, file: donorBook.label, message: 'The selected reference contains external worksheet parts or extension rules that cannot be imported automatically.' }); }
-        if (donorBook.theme !== books[0].theme && /\btheme=|<scheme\b/.test(donorBook.styles)) { compatible = false; issues.push({ sheet: name, file: donorBook.label, message: 'The selected reference uses a different workbook theme. Use workbooks with the same theme to preserve template colours and fonts.' }); }
-        if (donorBook.styles !== books[0].styles && /<colors\b/.test(donorBook.styles) && xmlCollection(donorBook.styles, 'colors') !== xmlCollection(books[0].styles, 'colors')) { compatible = false; issues.push({ sheet: name, file: donorBook.label, message: 'The selected reference uses a different indexed colour palette. Use matching palettes to preserve template colours.' }); }
+        if (appearanceConverter(donorBook, books[0]) !== unchangedXml) {
+          const action = 'Resolve the reference theme fonts and colours to explicit values when importing styles. Keep File-1\'s theme and palette unchanged.';
+          warnings.push(name + ' · ' + donorBook.label + ': ' + action);
+          templateDetails.push({ severity: 'Notice', sheet: name, file: donorBook.label, template: donorBook.label, action });
+        }
         if (donor.hasTemplateRules) for (const [helperName, helper] of donorBook.helpers) {
           if (/<tableParts\b|<drawing\b|<hyperlinks\b|<legacyDrawing\b|\br:id\s*=|<extLst\b|<f\b/.test(helper.raw) && helperSignature(helper, donorBook) !== helperSignature(books[0].helpers.get(helperName), books[0])) { compatible = false; issues.push({ sheet: name, file: donorBook.label, message: 'Reference lookup sheet ' + helperName + ' contains formulas or linked objects that need manual preservation.' }); }
         }
@@ -336,9 +339,72 @@
   }
   function xmlCollection(raw, name) { return new RegExp('<' + name + '\\b[^>]*?(?:\\/>|>[\\s\\S]*?<\\/' + name + '>)').exec(raw)?.[0] || ''; }
   function styleItems(raw, collection, item) { return [...xmlCollection(raw, collection).matchAll(new RegExp('<' + item + '\\b[^>]*?(?:\\/>|>[\\s\\S]*?<\\/' + item + '>)', 'g'))].map(m => m[0]); }
+  const unchangedXml = raw => raw;
+  const sameAppearance = (a, b) => a.styles === b.styles && a.theme === b.theme;
+  const DEFAULT_PALETTE = ('000000 FFFFFF FF0000 00FF00 0000FF FFFF00 FF00FF 00FFFF ' +
+    '000000 FFFFFF FF0000 00FF00 0000FF FFFF00 FF00FF 00FFFF 800000 008000 000080 808000 800080 008080 C0C0C0 808080 ' +
+    '9999FF 993366 FFFFCC CCFFFF 660066 FF8080 0066CC CCCCFF 000080 FF00FF FFFF00 00FFFF 800080 800000 008080 0000FF ' +
+    '00CCFF CCFFFF CCFFCC FFFF99 99CCFF FF99CC CC99FF FFCC99 3366FF 33CCCC 99CC00 FFCC00 FF9900 FF6600 666699 969696 ' +
+    '003366 339966 003300 333300 993300 993366 333399 333333').split(' ').map(c => 'FF' + c);
+  function themeElement(raw, name) {
+    const prefix = '(?:[\\w.-]+:)?';
+    return new RegExp('<' + prefix + name + '\\b[^>]*?(?:\\/>|>[\\s\\S]*?<\\/' + prefix + name + '>)').exec(raw)?.[0] || '';
+  }
+  function appearanceInfo(book) {
+    if (book.appearanceInfo) return book.appearanceInfo;
+    // SpreadsheetML's slots are light1, dark1, light2, dark2, accents, then hyperlinks.
+    const slots = ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink'];
+    const defaults = ['FFFFFF', '000000', 'EEECE1', '1F497D', '4F81BD', 'C0504D', '9BBB59', '8064A2', '4BACC6', 'F79646', '0000FF', '800080'];
+    const scheme = themeElement(book.theme, 'clrScheme');
+    const colours = slots.map((slot, i) => {
+      const raw = themeElement(scheme, slot), srgb = themeElement(raw, 'srgbClr'), system = themeElement(raw, 'sysClr');
+      const colour = srgb ? attrs(srgb).val : system ? attrs(system).lastClr : null;
+      return 'FF' + (/^[\da-f]{6}$/i.test(colour || '') ? colour.toUpperCase() : defaults[i]);
+    });
+    const fonts = {};
+    for (const kind of ['major', 'minor']) {
+      const raw = themeElement(book.theme, kind + 'Font'), scripts = {};
+      for (const m of raw.matchAll(/<(?:[\w.-]+:)?font\b[^>]*\/>/g)) { const a = attrs(m[0]); scripts[a.script] = a.typeface; }
+      fonts[kind] = { latin: attrs(themeElement(raw, 'latin')).typeface, scripts };
+    }
+    const custom = [...xmlCollection(book.styles, 'indexedColors').matchAll(/<rgbColor\b[^>]*\/>/g)].map(m => attrs(m[0]).rgb);
+    const palette = DEFAULT_PALETTE.map((value, i) => custom[i] ? 'FF' + custom[i].slice(-6).toUpperCase() : value);
+    return book.appearanceInfo = { colours, fonts, palette };
+  }
+  function appearanceConverter(source, base) {
+    const themeChanged = source.theme !== base.theme, from = appearanceInfo(source), to = appearanceInfo(base);
+    const paletteChanged = from.palette.some((c, i) => c !== to.palette[i]);
+    if (!themeChanged && !paletteChanged) return unchangedXml;
+    return raw => {
+      // Keep tint on the explicit RGB colour, so Excel applies its original HLS adjustment.
+      raw = raw.replace(/<(?:color|fgColor|bgColor|tabColor)\b[^>]*\/>/g, tag => {
+        const a = attrs(tag); let rgb;
+        if (themeChanged && a.theme !== undefined) rgb = from.colours[Number(a.theme)];
+        else if (paletteChanged && a.indexed !== undefined && Number(a.indexed) < 64) rgb = from.palette[Number(a.indexed)];
+        if (!rgb) return tag;
+        tag = tag.replace(/\s(?:theme|indexed|auto|rgb)=(?:"[^"]*"|'[^']*')/g, '');
+        return setAttr(tag, 'rgb', rgb);
+      });
+      if (!themeChanged) return raw;
+      return raw.replace(/<(font|rPr)\b[^>]*>[\s\S]*?<\/\1>/g, font => {
+        const scheme = /<scheme\b[^>]*\/>/.exec(font)?.[0], kind = scheme && attrs(scheme).val;
+        if (!['major', 'minor'].includes(kind)) return font;
+        const nameTag = /<(name|rFont)\b[^>]*\/>/.exec(font), stored = nameTag && attrs(nameTag[0]).val;
+        const charset = attrs(/<charset\b[^>]*\/>/.exec(font)?.[0] || '').val;
+        const script = { 128: 'Jpan', 129: 'Hang', 130: 'Hang', 134: 'Hans', 136: 'Hant', 163: 'Viet', 177: 'Hebr', 178: 'Arab', 222: 'Thai' }[charset];
+        const face = (script && from.fonts[kind].scripts[script]) || (charset && charset !== '0' ? stored : from.fonts[kind].latin) || stored || (kind === 'major' ? 'Cambria' : 'Calibri');
+        font = font.replace(scheme, '');
+        if (nameTag) return font.replace(nameTag[0], () => setAttr(nameTag[0], 'val', face));
+        const tag = font.startsWith('<rPr') ? 'rFont' : 'name';
+        return font.replace(/^(<(?:font|rPr)\b[^>]*>)/, (_, start) => start + '<' + tag + ' val="' + xml(face) + '"/>');
+      });
+    };
+  }
   function styleImporter(base) {
     let raw = base.styles;
-    const cache = new Map([[base.styles, { cells: null, dxfs: null }]]);
+    const styleKey = source => source.styles + '\u0000' + source.theme;
+    const cache = new Map([[styleKey(base), { cells: null, dxfs: null, format: unchangedXml }]]), converters = new Map([[base, unchangedXml]]);
+    const formatFor = source => { if (!converters.has(source)) converters.set(source, appearanceConverter(source, base)); return converters.get(source); };
     const order = ['numFmts', 'fonts', 'fills', 'borders', 'cellStyleXfs', 'cellXfs', 'cellStyles', 'dxfs', 'tableStyles', 'colors', 'extLst'];
     const write = (collection, items) => {
       const existing = xmlCollection(raw, collection), value = '<' + collection + ' count="' + items.length + '">' + items.join('') + '</' + collection + '>';
@@ -359,16 +425,23 @@
       return mapping;
     };
     const importBook = source => {
-      if (cache.has(source.styles)) return cache.get(source.styles);
+      const key = styleKey(source); if (cache.has(key)) return cache.get(key);
+      const format = formatFor(source), from = appearanceInfo(source), to = appearanceInfo(base);
       const formats = styleItems(raw, 'numFmts', 'numFmt'), byCode = new Map(formats.map(s => { const a = attrs(s); return [a.formatCode, Number(a.numFmtId)]; })), numFormats = new Map();
       let nextFormat = Math.max(163, ...formats.map(s => Number(attrs(s).numFmtId)));
       for (const f of styleItems(source.styles, 'numFmts', 'numFmt')) {
         const a = attrs(f);
-        if (!byCode.has(a.formatCode)) { byCode.set(a.formatCode, ++nextFormat); formats.push(setAttr(f, 'numFmtId', nextFormat)); }
-        numFormats.set(Number(a.numFmtId), byCode.get(a.formatCode));
+        const code = a.formatCode.replace(/"(?:[^"]|"")*"|\\.|\[Color(\d+)\]/gi, (token, index) => {
+          if (index === undefined || from.palette[Number(index) + 7] === to.palette[Number(index) + 7]) return token;
+          const destination = to.palette.findIndex((colour, i) => i >= 8 && colour === from.palette[Number(index) + 7]);
+          if (destination < 0) throw new Error(source.label + ': custom number format uses a palette colour unavailable in the base workbook.');
+          return '[Color' + (destination - 7) + ']';
+        });
+        if (!byCode.has(code)) { byCode.set(code, ++nextFormat); formats.push(setAttr(setAttr(f, 'formatCode', code), 'numFmtId', nextFormat)); }
+        numFormats.set(Number(a.numFmtId), byCode.get(code));
       }
       if (numFormats.size) write('numFmts', formats);
-      const fonts = append(source, 'fonts', 'font'), fills = append(source, 'fills', 'fill'), borders = append(source, 'borders', 'border');
+      const fonts = append(source, 'fonts', 'font', format), fills = append(source, 'fills', 'fill', format), borders = append(source, 'borders', 'border', format);
       const remap = (value, mappings) => value.replace(/^<\w+\b[^>]*>/, tag => {
         const a = attrs(tag);
         for (const [key, map] of Object.entries(mappings)) if (a[key] !== undefined) {
@@ -380,10 +453,10 @@
       const mappings = { fontId: fonts, fillId: fills, borderId: borders, numFmtId: numFormats };
       const xfs = append(source, 'cellStyleXfs', 'xf', value => remap(value, mappings));
       const cells = append(source, 'cellXfs', 'xf', value => remap(value, { ...mappings, xfId: xfs }));
-      const dxfs = append(source, 'dxfs', 'dxf', value => value.replace(/<numFmt\b[^>]*\/>/g, tag => remap(tag, { numFmtId: numFormats })));
-      const result = { cells, dxfs }; cache.set(source.styles, result); return result;
+      const dxfs = append(source, 'dxfs', 'dxf', value => format(value.replace(/<numFmt\b[^>]*\/>/g, tag => remap(tag, { numFmtId: numFormats }))));
+      const result = { cells, dxfs, format }; cache.set(key, result); return result;
     };
-    return { importBook, value: () => raw };
+    return { importBook, formatFor, value: () => raw };
   }
   function mapStyle(id, mapping) {
     if (!mapping) return id;
@@ -392,7 +465,7 @@
     return String(mapped);
   }
   function mapSheetStyles(raw, maps) {
-    return raw.replace(/<(?:c|row|col|cfRule)\b[^>]*>/g, tag => {
+    return maps.format(raw).replace(/<(?:c|row|col|cfRule)\b[^>]*>/g, tag => {
       const a = attrs(tag), key = tag.startsWith('<col ') ? 'style' : tag.startsWith('<cfRule ') ? 'dxfId' : 's';
       return a[key] === undefined ? tag : setAttr(tag, key, mapStyle(a[key], key === 'dxfId' ? maps.dxfs : maps.cells));
     });
@@ -411,12 +484,35 @@
   function rewriteSheetFormulas(raw, sheets, names) {
     return raw.replace(/<(formula1|formula2|formula|f)\b([^>]*)>([\s\S]*?)<\/\1>/g, (_, tag, a, text) => '<' + tag + a + '>' + xml(rewriteFormula(unxml(text), sheets, names)) + '</' + tag + '>');
   }
-  function transformRow(row, newNumber, source, base, baseStyle, columnMap, styleMap = null, width = 0) {
+  function scopeRowNamespaces(row, sourceRoot) {
+    // Excel adds extension attributes such as x14ac:dyDescent to ordinary rows.
+    // Keep their original namespace bindings when moving into an older template.
+    const used = new Set();
+    for (const m of row.matchAll(/<\/?[\w:.-]+\b[^>]*>/g)) {
+      const tag = m[0], prefix = /^<\/?([\w.-]+):/.exec(tag)?.[1];
+      if (prefix) used.add(prefix);
+      const a = attrs(tag);
+      for (const key of Object.keys(a)) if (key.includes(':') && !key.startsWith('xmlns:')) used.add(key.split(':')[0]);
+      for (const p of (a['mc:Ignorable'] || '').split(/\s+/).filter(Boolean)) used.add(p);
+    }
+    if (!used.size) return row;
+    let opening = row.match(/^<row\b[^>]*>/)[0];
+    const original = opening, local = attrs(opening);
+    const ignored = (sourceRoot['mc:Ignorable'] || '').split(/\s+/).filter(p => used.has(p));
+    if (ignored.length) used.add('mc');
+    for (const prefix of used) {
+      const key = 'xmlns:' + prefix;
+      if (prefix !== 'xml' && sourceRoot[key] && !local[key]) opening = setAttr(opening, key, sourceRoot[key]);
+    }
+    if (ignored.length) opening = setAttr(opening, 'mc:Ignorable', [...new Set([...(local['mc:Ignorable'] || '').split(/\s+/).filter(Boolean), ...ignored])].join(' '));
+    return opening + row.slice(original.length);
+  }
+  function transformRow(row, newNumber, source, base, baseStyle, columnMap, styleMap = null, width = 0, format = unchangedXml) {
     const originalTag = row.match(/^<row\b[^>]*>/)[0];
     let rowTag = setAttr(originalTag, 'r', newNumber);
     if (rowTag.endsWith('/>')) return rowTag;
     if (columnMap && attrs(rowTag).spans) rowTag = setAttr(rowTag, 'spans', '1:' + (width || Math.max(...columnMap) + 1));
-    if (attrs(rowTag).s !== undefined) rowTag = setAttr(rowTag, 's', source.styles === base.styles ? mapStyle(attrs(rowTag).s, styleMap) : '0');
+    if (attrs(rowTag).s !== undefined) rowTag = setAttr(rowTag, 's', sameAppearance(source, base) ? mapStyle(attrs(rowTag).s, styleMap) : '0');
     const cells = [];
     const remainder = row.slice(originalTag.length).replace(/<\/row>$/, '').replace(/<c\b[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g, cell => {
       let tag = cell.match(/^<c\b[^>]*>/)[0], a = attrs(tag);
@@ -425,10 +521,11 @@
       if (!Number.isInteger(destination) || destination < 0) throw new Error('No destination parameter column for ' + a.r + '.');
       const col = colName(destination);
       tag = setAttr(tag, 'r', col + newNumber);
-      if (source.styles !== base.styles) { const style = baseStyle[col]; if (style == null) throw new Error('Data-cell style cannot be preserved for column ' + col + '. Use matching templates.'); tag = setAttr(tag, 's', style); }
-      else if (a.s !== undefined) tag = setAttr(tag, 's', mapStyle(a.s, styleMap));
+      if (!sameAppearance(source, base)) { const style = baseStyle[col]; if (style == null) throw new Error('Data-cell style cannot be preserved for column ' + col + '. Use matching templates.'); tag = setAttr(tag, 's', style); }
+      else if (a.s !== undefined || styleMap) tag = setAttr(tag, 's', mapStyle(a.s || '0', styleMap));
       let body = cell.slice(cell.indexOf('>') + 1);
       if (a.t === 's') { const v = /<v>(\d+)<\/v>/.exec(body), str = v && source.strings[Number(v[1])]; if (!str) throw new Error('Invalid shared string.'); tag = setAttr(tag, 't', 'inlineStr'); body = '<is>' + str.inner + '</is></c>'; }
+      body = format(body);
       cells.push({ column: destination, xml: tag + (tag.endsWith('/>') ? '' : body) });
       return '';
     });
@@ -522,12 +619,16 @@
       for (const w of session.books) {
         const sheet = w.sheets.get(name); if (!sheet || !sheet.rows.length) continue;
         const source = w === donor ? raw : await w.read(sheet.entry.path), body = /<sheetData(?:\s[^>]*)?>([\s\S]*?)<\/sheetData>/.exec(source)[1], keep = new Set(sheet.rows.map(r => r.number));
+        const sourceRoot = w === donor ? null : attrs(source.match(/<worksheet\b[^>]*>/)[0]);
         for (const m of body.matchAll(/<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g)) {
           const n = Number(attrs(m[0].match(/^<row\b[^>]*>/)[0]).r);
-          if (keep.has(n)) data.push(transformRow(m[0], rowNumber++, w, donor, style, sheet.columnMap, maps.cells, target.names.length));
+          if (keep.has(n)) {
+            const row = transformRow(m[0], rowNumber++, w, donor, style, sheet.columnMap, maps.cells, target.names.length, styles.formatFor(w));
+            data.push(sourceRoot ? scopeRowNamespaces(row, sourceRoot) : row);
+          }
         }
       }
-      const safeHeader = donor === base ? header : header.replace(/<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g, r => transformRow(r, Number(attrs(r.match(/^<row\b[^>]*>/)[0]).r), donor, donor, {}, null, maps.cells));
+      const safeHeader = donor === base ? header : header.replace(/<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g, r => transformRow(r, Number(attrs(r.match(/^<row\b[^>]*>/)[0]).r), donor, donor, {}, null, maps.cells, 0, maps.format));
       raw = mapSheetStyles(raw.slice(0, originalBody.index), maps) + '<sheetData>\n' + safeHeader + '\n' + data.join('\n') + '\n</sheetData>' + mapSheetStyles(raw.slice(originalBody.index + originalBody[0].length), maps);
       if (donor !== base) raw = rewriteSheetFormulas(raw, resources.sheets, resources.names);
       raw = raw.replace(/<dimension\b[^>]*\/>/, '<dimension ref="A1:' + colName(target.names.length - 1) + Math.max(5, rowNumber - 1) + '"/>');

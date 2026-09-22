@@ -2,11 +2,13 @@
 
 A complete browser app for merging ZTE ITBBU configuration workbooks and comparing parameter values across two or more files. No API keys, database, Python backend or server uploads are required.
 
-Version **1.2.0** selects the sheet with the most parameter columns as the reference for each MO. A 23-column sheet can merge into a 35-column reference from any uploaded file. Values match by exact parameter name; absent parameters remain blank. The reference supplies the five template rows, column order, formatting and dropdowns. Data rows still follow File-1, File-2, File-3 order.
+Version **1.2.1** selects the sheet with the most parameter columns as the reference for each MO and supports merging across different workbook themes, including legacy exports with no theme file. A 23-column sheet can merge into a 35-column reference from any uploaded file. Values match by exact parameter name; absent parameters remain blank. The reference supplies the five template rows, column order, formatting and dropdowns. Data rows still follow File-1, File-2, File-3 order.
 
 ## Update an existing GitHub deployment
 
-Extract `ITBBU_Column_Merge_Update.zip` and replace the matching files in your repository. Keep the `public` and `tests` folder structure; upload the extracted files, not the ZIP itself. Commit the changes and redeploy the connected Vercel project. Reload the app and select the workbooks again. The desktop sidebar shows `v1.2.0`; script URLs are versioned so the new inspection and merge logic loads together.
+Extract `ITBBU_Column_Merge_Update.zip` and replace the matching files in your repository. Keep the `public` and `tests` folder structure; upload the extracted files, not the ZIP itself. Commit the changes and redeploy the connected Vercel project. Reload the app and select the workbooks again. The desktop sidebar must show `v1.2.1`; script URLs are versioned so the new inspection and merge logic loads together. If you still see an older version, check the deployed commit and refresh with Ctrl+F5.
+
+This update fixes the `SubRack` / `Slot` error about a different workbook theme. It resolves source theme fonts and colours when importing styles instead of requiring identical themes, and retains the XML namespace declarations used by newer Excel row metadata. Non-blocking template notices are collapsed beneath a green ready-to-merge message; genuine compatibility errors remain blocking.
 
 ## Deploy to Vercel
 
@@ -43,6 +45,7 @@ The merged download always includes every configuration sheet, even when a subse
 - Retain TemplateInfo and Index unchanged from File-1 and exclude them from merge/audit calculations. The Index is not regenerated.
 - Preserve File-1 non-configuration support sheets, including hidden `HideEnum`, unchanged. These contain dropdown lookup data, not row-6 site records. If a later reference needs a different lookup, retain it under a separate hidden name such as `__ITBBU_F2_HideEnum` and redirect that reference's dropdowns/named ranges. Identical lookup contents are reused after resolving shared strings. Values are not translated between enum codes or validated against every vendor-specific rule.
 - Preserve the reference's fonts, fills, borders, column widths, template row heights, print ranges and validation rules. Import its styles with remapped indices when necessary. Existing validation ranges extend for appended records. Source data from a different style table uses the reference's column/data styles. File-1 keeps its original support sheets, styles and named ranges; imported styles and names are added as needed, and scoped names for a replaced MO come from that MO's reference.
+- Keep File-1's workbook theme and indexed palette unchanged. When a reference uses a different theme or palette, resolve imported colours to RGB while retaining tint, and resolve theme-based font names. A legacy workbook without a theme uses its stored font names and the standard Excel colour defaults. Rich-text runs, conditional-format colours and worksheet tab colours are handled too. Style-import caching includes both the stylesheet and the theme. Transferred rows retain their namespace bindings, including newer Excel extension attributes.
 - Do not add provenance or audit columns to the merged configuration template. Source traceability belongs in the separate audit workbook.
 - No formulas are evaluated. Data formulas, merged data cells, tables, drawings, hyperlinks and comments on configuration sheets require manual handling and block the merge rather than being silently discarded. Convert formulas to values and remove unsupported objects from a copy when appropriate.
 
@@ -93,7 +96,7 @@ The audit workbook contains Summary, Files, Sheet coverage and one combined Para
 
 The original generic `Rows 1–5 differ` message did not distinguish missing columns or changed descriptions from changed parameter definitions. Version 1.2.0 handles subsets and reordered columns using the widest reference. For a remaining row-3 or row-5 conflict on a shared parameter, inspect the named cells in both source workbooks or the audit's Template details sheet and use compatible source exports. The app does not assume that different enum meanings, data types or primary-key rules are interchangeable.
 
-`HideEnum` is retained from File-1. Do not delete it to work around a warning. A later reference's ordinary lookup data can be imported separately. Lookup formulas, linked objects, unsupported worksheet extensions, differing themes that affect imported styles, and incompatible custom colour palettes require manual handling and produce a specific issue.
+`HideEnum` is retained from File-1. Do not delete it to work around a warning. A later reference's ordinary lookup data can be imported separately. Different workbook themes and ordinary indexed colours no longer block merging. Lookup formulas, linked objects and unsupported worksheet extensions still require manual handling. A rare custom number format using a `[ColorN]` value unavailable in File-1's palette produces a specific export error rather than silently changing its colour.
 
 ## Limits and compatibility
 

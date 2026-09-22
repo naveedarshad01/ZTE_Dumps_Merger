@@ -1,6 +1,6 @@
 # Verification
 
-The original release was checked against the two supplied ZTE ITBBU V5.85.20.20 exports for LG0068 and LG0011. The original measurements and earlier compatibility checks are retained below. The v1.2.0 verification at the end of this file covers the current widest-sheet merge and a new check of both complete uploaded workbooks.
+The original release was checked against the two supplied ZTE ITBBU V5.85.20.20 exports for LG0068 and LG0011. The original measurements and earlier compatibility checks are retained below. The final section covers the current **v1.2.1** theme and Excel-metadata fixes using the latest, resaved workbooks from the error report. Earlier measurements describe earlier versions of the inputs, not the newest pair.
 
 ## Merged workbook
 
@@ -71,3 +71,29 @@ The app was run against the newly uploaded complete V5.85.20.20 exports. Inspect
 A separate mixed-width integration run used three valid XLSX files with 72 records across three MOs, selecting a different reference file for each MO. Its merge and audit were reopened read-only with openpyxl. All header values and formatting, data values/types, missing-column blanks, source LDNs, column widths, freeze panes, dropdown dependencies and **672 audit comparisons** were verified. This included a later reference with a different style table and conflicting hidden lookup contents.
 
 The v1.2.0 worker successfully handled inspection, audit and merged-download messages in an isolated JavaScript context. No interactive browser, Vercel deployment or live ZTE network-manager import was performed. The actual small 5G files shown in the screenshots were not available; their unequal-column scenario is covered by the regression tests, while any additional definition conflicts would still be reported explicitly.
+
+## Theme and Excel-metadata compatibility — v1.2.1 (22 September 2026)
+
+The exact latest uploaded files, locally suffixed `(2).xlsx`, were tested in the screenshot order and the reverse order:
+
+- Screenshot File-1: `RANCM-Custom-template-huabdaka-20260916145056-ITBBU-ITRAN-PNF_V5.85.20.20(2).xlsx` — 8,255,262 bytes; 25,335 configuration records; a newer Excel theme.
+- Screenshot File-2: `RANCM-Custom-template-huabdaka-20260916144841-ITBBU-ITRAN-PNF_V5.85.20.20(2).xlsx` — 7,408,400 bytes; 17,061 configuration records; a legacy export without a theme part.
+
+The previous version reproduced both reported blocking issues exactly. File-2 supplies the wider SubRack and Slot sheets, but its absent theme differed from File-1's newer theme. The update resolves imported theme font and colour references rather than requiring identical themes. Independent output parsing also exposed an unrelated namespace-transfer defect: newer Excel rows carried `x14ac:dyDescent` into an older worksheet without its namespace declaration. The update preserves those row-level namespace bindings and their markup-compatibility declarations, including when a prefix means something different in the destination.
+
+| Check | Screenshot order | Reverse order |
+| --- | --- | --- |
+| Blocking compatibility issues | 0 | 0 |
+| Configuration records | 42,396 | 42,396 |
+| MO sheets / total sheets | 1,899 / 1,902 | 1,899 / 1,902 |
+| SubRack reference / columns / records | File-2 / 15 / 2 | File-1 / 15 / 2 |
+| Slot reference / columns / records | File-2 / 9 / 20 | File-1 / 9 / 20 |
+| Header cells checked | 188,110 | 188,110 |
+
+A separate XML reader verified every output data value, stored type, parameter mapping and file order against these source files. Base-reference header-row XML was identical. For the two later-reference templates, it checked all header values, resolved fonts/fills/borders, column widths and column styles. TemplateInfo, Index, HideEnum and the other unchanged base package parts were byte-identical. Every standard dropdown rule retained its reference formula. The supplied resaved base contains no standard validation rules; its merged output gains 4 rules from the two later references. The reverse-order output retains all 7,720 rules from the legacy reference templates. The app retains the selected reference's actual rules; it does not invent missing rules. Both ZIPs passed CRC checks, their worksheets parsed as XML, and both workbooks opened with openpyxl read-only. The legacy-base output carries the source's absence of a named default style, which openpyxl reports as a non-fatal warning.
+
+The screenshot-order audit completed with **578,511 comparisons**: 163,300 Same; 13,361 Different; 401,827 Missing object; and **23 Missing parameter**. The new missing-parameter count reflects the narrower SubRack and Slot columns, not lost values in the merge.
+
+All **29 regression tests** pass, along with syntax checks for all three application scripts. The five new tests cover modern-theme versus theme-less references in both orders; identical stylesheet XML used with different themes; major/minor fonts, RGB/tint, borders, conditional formatting and tab colours; custom indexed palettes; shared/inline rich text; implicit style-zero cells; and scoped newer-Excel row namespaces. Prior column-mapping, audit, lookup and real-conflict protections remain tested.
+
+The current browser-worker scripts handled inspection, audit and merge for the entire screenshot-order pair in an isolated JavaScript context. This is not an interactive browser test, a Vercel deployment, or a live ZTE network-manager import. The ZIP update must still be committed to the user's repository and redeployed before the live application uses v1.2.1.

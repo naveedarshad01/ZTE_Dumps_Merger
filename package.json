@@ -1,6 +1,6 @@
 {
   "name": "itbbu-config-studio",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Browser-local ZTE ITBBU configuration merger and parameter audit",
   "scripts": {

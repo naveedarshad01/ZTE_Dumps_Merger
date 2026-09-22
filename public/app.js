@@ -14,7 +14,7 @@ function resetWorker() {
 function worker() {
   if (state.worker) return state.worker;
   if (!window.Worker) throw new Error('This browser does not support background processing. Open the app in a recent Chrome, Edge or Firefox browser.');
-  const w = new Worker('worker.js?v=1.2.0');
+  const w = new Worker('worker.js?v=1.2.1');
   w.onmessage = ({ data }) => {
     if (data.type === 'progress') { $('progress-label').textContent = data.value.message; if (data.value.fraction > 0) $('progress').value = data.value.fraction; else $('progress').removeAttribute('value'); return; }
     const entry = state.pending.get(data.id); if (!entry) return; state.pending.delete(data.id); data.error ? entry.reject(new Error(data.error)) : entry.resolve(data.value);
@@ -78,12 +78,11 @@ $('inspect').onclick = () => task('Opening workbooks…', async () => {
     showNotice(state.summary.issues.length + ' template compatibility issue(s) prevent merging. You can still compare parameter values.');
     const ul = el('ul'); for (const i of state.summary.issues.slice(0, 25)) ul.append(el('li', i.sheet + ' · ' + i.file + ': ' + i.message)); $('notice').append(ul);
     if (state.summary.issues.length > 25) $('notice').append(el('p', 'The audit export includes the complete issue list.'));
-  } else { showNotice(fmt(state.summary.totalRecords) + ' configuration records ready to merge. Each MO uses its widest sheet as the reference. Values match by parameter name; missing parameters stay blank.', !state.summary.warnings.length); }
+  } else { showNotice(fmt(state.summary.totalRecords) + ' configuration records ready to merge. Each MO uses its widest sheet as the reference. Values match by parameter name; missing parameters stay blank.', true); }
   if (state.summary.warnings.length) {
     const details = el('details'), heading = el('summary', state.summary.warnings.length + ' template notice(s) — merging is ' + (state.summary.issues.length ? 'blocked by the issues above' : 'available'));
     const ul = el('ul'); for (const warning of state.summary.warnings.slice(0, 25)) ul.append(el('li', warning));
     details.append(heading, ul); $('notice').append(details);
-    if (!state.summary.issues.length) details.open = true;
   }
   if (state.summary.templateDetails?.length) $('notice').append(el('p', 'The audit workbook includes a Template details sheet with the header cells, original values and actions.'));
   $('settings').scrollIntoView({ behavior: 'smooth', block: 'start' });
