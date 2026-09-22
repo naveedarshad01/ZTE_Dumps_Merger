@@ -1,4 +1,4 @@
-importScripts('vendor/jszip.min.js', 'engine.js');
+importScripts('vendor/jszip.min.js', 'engine.js?v=1.2.0');
 let session = null;
 let lastProgress = 0;
 function progress(value) {

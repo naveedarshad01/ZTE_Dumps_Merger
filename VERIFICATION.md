@@ -1,6 +1,6 @@
 # Verification
 
-Checked against the two supplied ZTE ITBBU V5.85.20.20 exports for LG0068 and LG0011.
+The original release was checked against the two supplied ZTE ITBBU V5.85.20.20 exports for LG0068 and LG0011. The original measurements and earlier compatibility checks are retained below. The v1.2.0 verification at the end of this file covers the current widest-sheet merge and a new check of both complete uploaded workbooks.
 
 ## Merged workbook
 
@@ -33,8 +33,41 @@ The full application audit export completed in approximately 20 seconds in the t
 
 ## Application checks
 
-Nine regression tests cover three-file merging, reordered data rows, exact template headers, blank versus zero, text versus numeric cells, literal marker text, duplicate keys, missing keys, root normalization, original LDN preservation, shared strings, missing worksheets, incompatible metadata, formulas, audit exports, and selected-sheet scope.
+The original nine regression tests covered three-file merging, reordered data rows, exact template headers, blank versus zero, text versus numeric cells, literal marker text, duplicate keys, missing keys, root normalization, original LDN preservation, shared strings, missing worksheets, incompatible metadata, formulas, audit exports, and selected-sheet scope.
 
 The browser-worker scripts were also executed in an isolated browser-like JavaScript context using both original workbooks. Script loading, inspection, comparison and the original-LDN preview passed. JavaScript syntax and HTML asset/element references were checked.
 
 No deployment to a Vercel account, live ZTE import, or interactive browser UI test was performed. The separate delivered audit uses the same verified dataset with additional report formatting.
+
+## Compatibility update — v1.1.0 (21 September 2026)
+
+All 16 regression tests passed at this stage. They retained the original data/audit checks and additionally verified:
+
+- Description differences allow merging while File-1 header XML stays identical.
+- Three differently ordered column layouts preserve every value, shared string and numeric type under the correct destination parameter; full primary keys match regardless of column order.
+- Appended cells use the destination column style when the source style table differs.
+- Later-file lookup changes, or missing lookup sheets, preserve File-1 support sheets, named ranges and validation definitions. Lookup checks resolve shared strings and ignore XML/style-only differences.
+- Additional sheets carrying template rules still block if their lookup or named-range dependencies differ.
+- Parameter-set, type/range and key-rule conflicts still block and identify source/destination cells. Formula protection is retained.
+- The audit's Template details sheet contains the differing header values and the action taken.
+
+An independent openpyxl integration check generated three valid XLSX inputs containing 360 records, five template rows, reordered columns, different header guidance, different hidden lookup contents, dropdowns, custom styles, blank/zero/Boolean/text values and literal text beginning with `=`. The merged result was reopened with openpyxl and all 360 records matched the sources under File-1 column names. File-1 header XML, styles, TemplateInfo, Index, HideEnum and workbook named ranges were preserved; validation ranges extended correctly. The exported audit reopened successfully with 240 comparisons and original LDNs.
+
+The updated worker handled inspection and audit messages in an isolated JavaScript context. JavaScript syntax checks passed. The two small 5G workbooks in the 21 September error screenshot were not attached, so their exact row-3/row-5 compatibility has not been verified. The screenshot alone cannot establish which header values changed. This release does not assert that all different template versions are compatible, and no live ZTE import or deployed-browser test was performed.
+
+## Widest-sheet merge — v1.2.0 (22 September 2026)
+
+All **24 current regression tests pass**, and all three application scripts pass syntax checks. The new tests verify:
+
+- A 23-column File-1, 35-column File-2 and 30-column File-3 select File-2's template. Every value is checked under the correct parameter, including reordered columns beyond Z, text identifiers, numeric zero and blank missing parameters.
+- Reference selection is independent for each MO. Different MOs select File-1, File-2 and File-3; an empty but wider template remains eligible. Equal widths keep the earliest file.
+- A later reference replaces the existing MO sheet without duplicating its name. Header rows come from the reference while data rows retain file order.
+- Missing parameter columns, present blank values, zeros, original LDNs and duplicate keys remain distinct in the audit. The exported coverage report identifies the reference and all source column counts.
+- Later references retain their fonts, fills, borders, number formats, column styles, conditional formatting, dropdowns and scoped print ranges. Imported style indices are remapped, and different lookup contents receive separate hidden sheets and named ranges. File-1 support sheets remain unchanged.
+- Self-closing blank cells do not absorb the next parameter's value. Unmatched source parameters, conflicting shared definitions, formulas and unsupported dynamic/external template references are reported before an invalid merge can be downloaded.
+
+The app was run against the newly uploaded complete V5.85.20.20 exports. Inspection returned no blocking issues. The merged result contains **42,396 configuration records across 1,899 MO sheets**. A separate XML reader independently compared every source/output value and type in order, all **188,110 header cells**, and **7,720 validation rules**. TemplateInfo, Index and HideEnum and the other original package parts remained byte-identical to File-1. The audit still reports **578,511 comparisons**: 163,323 Same, 13,361 Different and 401,827 Missing object.
+
+A separate mixed-width integration run used three valid XLSX files with 72 records across three MOs, selecting a different reference file for each MO. Its merge and audit were reopened read-only with openpyxl. All header values and formatting, data values/types, missing-column blanks, source LDNs, column widths, freeze panes, dropdown dependencies and **672 audit comparisons** were verified. This included a later reference with a different style table and conflicting hidden lookup contents.
+
+The v1.2.0 worker successfully handled inspection, audit and merged-download messages in an isolated JavaScript context. No interactive browser, Vercel deployment or live ZTE network-manager import was performed. The actual small 5G files shown in the screenshots were not available; their unequal-column scenario is covered by the regression tests, while any additional definition conflicts would still be reported explicitly.

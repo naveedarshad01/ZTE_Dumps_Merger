@@ -14,7 +14,7 @@ function resetWorker() {
 function worker() {
   if (state.worker) return state.worker;
   if (!window.Worker) throw new Error('This browser does not support background processing. Open the app in a recent Chrome, Edge or Firefox browser.');
-  const w = new Worker('worker.js');
+  const w = new Worker('worker.js?v=1.2.0');
   w.onmessage = ({ data }) => {
     if (data.type === 'progress') { $('progress-label').textContent = data.value.message; if (data.value.fraction > 0) $('progress').value = data.value.fraction; else $('progress').removeAttribute('value'); return; }
     const entry = state.pending.get(data.id); if (!entry) return; state.pending.delete(data.id); data.error ? entry.reject(new Error(data.error)) : entry.resolve(data.value);
@@ -47,7 +47,7 @@ function drawFiles() {
   const list = $('file-list'); list.replaceChildren();
   state.files.forEach((f, i) => {
     const row = el('div', undefined, 'file-row'), meta = el('div', undefined, 'file-meta'), title = el('span', f.name, 'file-name'); title.title = f.name;
-    meta.append(title, el('span', (f.size / 1048576).toFixed(2) + ' MiB' + (i === 0 ? ' · template source' : ''), 'file-size'));
+    meta.append(title, el('span', (f.size / 1048576).toFixed(2) + ' MiB' + (i === 0 ? ' · base workbook' : ''), 'file-size'));
     const remove = el('button', '×', 'remove-file'); remove.setAttribute('aria-label', 'Remove ' + f.name); remove.onclick = () => { if (!state.busy) { state.files.splice(i, 1); invalidate(); drawFiles(); } };
     row.append(el('span', 'File-' + (i + 1), 'file-label'), meta, remove); list.append(row);
   });
@@ -78,7 +78,14 @@ $('inspect').onclick = () => task('Opening workbooks…', async () => {
     showNotice(state.summary.issues.length + ' template compatibility issue(s) prevent merging. You can still compare parameter values.');
     const ul = el('ul'); for (const i of state.summary.issues.slice(0, 25)) ul.append(el('li', i.sheet + ' · ' + i.file + ': ' + i.message)); $('notice').append(ul);
     if (state.summary.issues.length > 25) $('notice').append(el('p', 'The audit export includes the complete issue list.'));
-  } else { showNotice(fmt(state.summary.totalRecords) + ' configuration records ready to merge. Rows 1–5 match. ' + state.summary.warnings.join(' '), true); }
+  } else { showNotice(fmt(state.summary.totalRecords) + ' configuration records ready to merge. Each MO uses its widest sheet as the reference. Values match by parameter name; missing parameters stay blank.', !state.summary.warnings.length); }
+  if (state.summary.warnings.length) {
+    const details = el('details'), heading = el('summary', state.summary.warnings.length + ' template notice(s) — merging is ' + (state.summary.issues.length ? 'blocked by the issues above' : 'available'));
+    const ul = el('ul'); for (const warning of state.summary.warnings.slice(0, 25)) ul.append(el('li', warning));
+    details.append(heading, ul); $('notice').append(details);
+    if (!state.summary.issues.length) details.open = true;
+  }
+  if (state.summary.templateDetails?.length) $('notice').append(el('p', 'The audit workbook includes a Template details sheet with the header cells, original values and actions.'));
   $('settings').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 function settings() { return { mode: $('match-mode').value, normalizeRoots: $('normalize-roots').checked, includeIdentity: $('include-identity').checked, ...($('scope').value === 'selected' ? { selected: [...state.selected] } : {}) }; }
@@ -116,12 +123,12 @@ function renderCoverage() {
   const search = $('coverage-search').value.toLowerCase(), rows = state.summary.sheets.filter(s => (!search || s.name.toLowerCase().includes(search)) && (!$('populated-only').checked || s.total));
   state.coveragePage = Math.min(state.coveragePage, Math.max(0, Math.ceil(rows.length / 40) - 1));
   const start = state.coveragePage * 40, table = $('coverage-table'), body = table.querySelector('tbody');
-  tableHead(table, ['Configuration sheet', ...state.summary.files.map(f => f.label), 'Merged rows', 'Template']); body.replaceChildren();
+  tableHead(table, ['Configuration sheet', ...state.summary.files.map(f => f.label + ' rows / columns'), 'Merged rows', 'Reference', 'Template']); body.replaceChildren();
   for (const s of rows.slice(start, start + 40)) {
-    const tr = el('tr'); tr.append(el('td', s.name)); for (const n of s.counts) tr.append(el('td', n === null ? 'Missing sheet' : fmt(n), 'number'));
-    tr.append(el('td', fmt(s.total), 'number')); const status = el('td'); status.append(badge(s.compatible ? 'Compatible' : 'Review needed', s.compatible ? 'compatible' : 'missing')); tr.append(status); body.append(tr);
+    const tr = el('tr'); tr.append(el('td', s.name)); s.counts.forEach((n, i) => tr.append(el('td', n === null ? 'Missing sheet' : fmt(n) + ' / ' + fmt(s.columnCounts[i]), 'number')));
+    tr.append(el('td', fmt(s.total), 'number'), el('td', s.reference + ' · ' + fmt(s.columns) + ' columns')); const status = el('td'); status.append(badge(s.compatible ? 'Compatible' : 'Review needed', s.compatible ? 'compatible' : 'missing')); tr.append(status); body.append(tr);
   }
-  if (!rows.length) emptyRow(body, state.summary.files.length + 3, 'No sheets match this filter.');
+  if (!rows.length) emptyRow(body, state.summary.files.length + 4, 'No sheets match this filter.');
   $('coverage-count').textContent = rows.length ? fmt(start + 1) + '–' + fmt(Math.min(start + 40, rows.length)) + ' of ' + fmt(rows.length) + ' sheets' : '0 sheets';
   $('coverage-prev').disabled = start === 0; $('coverage-next').disabled = start + 40 >= rows.length;
 }

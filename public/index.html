@@ -5,7 +5,7 @@
   <meta name="description" content="Merge ZTE ITBBU configuration workbooks without changing the template. Compare parameter values across sites or snapshots, entirely in your browser.">
   <meta name="theme-color" content="#102236"><title>ITBBU Config Studio</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css">
-  <script src="app.js" defer></script>
+  <script src="app.js?v=1.2.0" defer></script>
 </head>
 <body>
   <aside class="rail">
@@ -16,7 +16,7 @@
       <a href="#settings" class="nav-item"><span>02</span> Merge &amp; audit</a>
       <a href="#results" class="nav-item"><span>03</span> Results &amp; export</a>
     </nav>
-    <div class="rail-bottom"><div class="local-icon">⌘</div><strong>Your configuration stays here.</strong><p>Files are processed on your device and cleared when you close this page.</p><span class="version">ZTE ITBBU · XLSX</span></div>
+    <div class="rail-bottom"><div class="local-icon">⌘</div><strong>Your configuration stays here.</strong><p>Files are processed on your device and cleared when you close this page.</p><span class="version">ZTE ITBBU · XLSX · v1.2.0</span></div>
   </aside>
   <main>
     <header class="topbar"><span>NETWORK OPERATIONS <span class="slash">/</span> CONFIGURATION</span><span class="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 10V7a6 6 0 0 1 12 0v3M5 10h14v11H5zM12 14v3"/></svg>Local processing</span></header>
@@ -34,9 +34,9 @@
         <div class="source-footer"><span id="file-count">No files selected</span><button class="button primary" id="inspect" disabled>Inspect workbooks <span aria-hidden="true">↗</span></button></div>
       </div>
       <div class="panel template-panel">
-        <p class="eyebrow">TEMPLATE PRESERVATION</p><h2>Five rows stay in place.</h2><p>Append each sheet’s records from row 6, in file order. Keep the original names, colours, column widths and dropdowns.</p>
+        <p class="eyebrow">TEMPLATE PRESERVATION</p><h2>The widest sheet sets the template.</h2><p>For each MO, keep rows 1–5 from the file with the most parameter columns. Match values by name, leave missing parameters blank, and append rows in file order.</p>
         <div class="template-preview" aria-label="Template rows 1–5 are preserved, followed by File-1 and File-2 data"><div><i>1</i><span class="violet">Parameter names</span></div><div><i>2</i><span class="yellow">Descriptions</span></div><div><i>3</i><span class="teal">Data types</span></div><div><i>4</i><span class="cyan">Parameter guidance</span></div><div><i>5</i><span class="pale">Primary keys &amp; rules</span></div><div class="data-demo"><i>6+</i><span>File-1 data</span><em>+</em><span>File-2…N data</span></div></div>
-        <p class="small-note">TemplateInfo, Index and supporting lookup sheets remain unchanged from File-1.</p>
+        <p class="small-note">Equal column counts use the earliest file. File-1 supplies the base workbook, TemplateInfo and Index. Each reference keeps its formatting and dropdowns.</p>
       </div>
     </section>
 
